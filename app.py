@@ -3,9 +3,9 @@ import tensorflow as tf
 import numpy as np
 import cv2
 from PIL import Image
+import os
 
 # --- CONFIGURATION ---
-# This matches the alphabetical order of the HAM10000 folders
 CLASS_NAMES = {
     0: 'Actinic Keratoses (akiec)',
     1: 'Basal Cell Carcinoma (bcc)', 
@@ -16,131 +16,134 @@ CLASS_NAMES = {
     6: 'Vascular Lesions (vasc)'
 }
 
-# --- 1. LOAD MODEL ---
+# --- 1. ROBUST MODEL LOADER ---
 @st.cache_resource
 def load_learner():
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    model_path = os.path.join(current_dir, 'skin_cancer_model.h5')
+    
+    if not os.path.exists(model_path):
+        st.error(f"❌ ERROR: File not found at: `{model_path}`")
+        return None
+
     try:
-        # Load the model from the local directory
-        model = tf.keras.models.load_model('skin_cancer_model.h5')
+        st.info("🔧 Building model architecture...")
+        
+        # 1. Re-create Base Model
+        base_model = tf.keras.applications.EfficientNetB0(
+            include_top=False,
+            weights=None, 
+            input_shape=(224, 224, 3)
+        )
+        base_model.trainable = False 
+
+        # 2. Re-create Head
+        model = tf.keras.models.Sequential([
+            base_model,
+            tf.keras.layers.GlobalAveragePooling2D(),
+            tf.keras.layers.Dropout(0.3),
+            tf.keras.layers.Dense(128, activation='relu'),
+            tf.keras.layers.Dense(7, activation='softmax')
+        ])
+        
+        # 3. Compile & Load Weights
+        model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+        model.load_weights(model_path)
+        
+        st.success("✅ Model System Online")
         return model
+
     except Exception as e:
+        st.error(f"❌ Error loading model: {e}")
         return None
 
 model = load_learner()
 
-# --- 2. PREPROCESSING (Digital Hair Removal) ---
+# --- 2. PREPROCESSING ---
 def preprocess_image(image):
-    """
-    Preprocesses the image to match the training pipeline exactly.
-    1. Convert to Array
-    2. Digital Hair Removal (DullRazor)
-    3. Resize to 224x224
-    4. Format for Model (No /255 division!)
-    """
-    # Convert PIL image to numpy array (RGB)
     img_array = np.array(image.convert('RGB'))
-    
-    # Ensure it's uint8 for OpenCV processing
     img_array = img_array.astype('uint8')
     
-    # --- Hair Removal (DullRazor Algorithm) ---
-    # Convert to grayscale to find dark hair on light skin
+    # Hair Removal
     gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
-    
-    # Kernel for the morphological filtering
     kernel = cv2.getStructuringElement(1, (17, 17))
-    
-    # BlackHat transform to isolate hair
     blackhat = cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, kernel)
-    
-    # Thresholding to create a hair mask
     _, threshold = cv2.threshold(blackhat, 10, 255, cv2.THRESH_BINARY)
-    
-    # Inpaint (fill) the masked hair pixels with surrounding skin color
     final_image = cv2.inpaint(img_array, threshold, 1, cv2.INPAINT_TELEA)
     
-    # --- Formatting ---
-    # Resize to 224x224 (Model Requirement)
+    # Resize & Convert
     final_image = cv2.resize(final_image, (224, 224))
-    
-    # CRITICAL: Match the training script!
-    # Do NOT divide by 255.0. Just convert to float32.
     final_image = final_image.astype('float32')
     
-    # Add batch dimension (1, 224, 224, 3)
     return np.expand_dims(final_image, axis=0)
 
 # --- 3. UI DESIGN ---
 st.set_page_config(page_title="DermaAI Scanner", page_icon="🔬")
 
-# Custom CSS for styling
-st.markdown("""
-<style>
-    .main-header {
-        text-align: center; 
-        color: #d33;
-    }
-    .report-box {
-        border: 2px solid #eee;
-        padding: 20px;
-        border-radius: 10px;
-    }
-</style>
-""", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center; color: #d33;'>🔬 DermaAI: Skin Lesion Classifier</h1>", unsafe_allow_html=True)
 
-st.markdown("<h1 class='main-header'>🔬 DermaAI: Skin Lesion Classifier</h1>", unsafe_allow_html=True)
-st.markdown("### Upload a dermoscopic image for AI risk assessment.")
-
-# Sidebar
 st.sidebar.title("About Project")
-st.sidebar.info("This AI model uses **EfficientNetB0** trained on the HAM10000 dataset. It features automatic **Digital Hair Removal** to improve accuracy on real-world images.")
-st.sidebar.warning("⚠️ **Disclaimer:** This tool is for educational purposes only. It is NOT a substitute for professional medical advice.")
+st.sidebar.info("Features **EfficientNetB0** + **Digital Hair Removal**.")
+st.sidebar.info("🛡️ **High-Sensitivity Mode Active:** This model prioritizes patient safety. Any suspicious features will trigger a medical alert, even if the primary prediction is benign.")
 
-# File Uploader
 uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "png", "jpeg"])
 
 if uploaded_file is not None:
-    # Display the uploaded image
     image = Image.open(uploaded_file)
     col1, col2 = st.columns(2)
     
     with col1:
-        st.image(image, caption='Original Upload', use_column_width=True)
+        # FIXED: Removed yellow warning box
+        st.image(image, caption='Original Upload', width=350)
     
-    # Check if model is loaded
-    if model is None:
-        st.error("⚠️ Model not found! Please download 'skin_cancer_model.h5' from Colab and place it in this folder.")
-    else:
-        # Run Prediction
+    if model is not None:
         with st.spinner('Scanning for patterns...'):
-            try:
-                processed_img = preprocess_image(image)
-                predictions = model.predict(processed_img)
+            processed_img = preprocess_image(image)
+            predictions = model.predict(processed_img)
+            probs = predictions[0] # Get probabilities
+            
+            # Get the "Winner"
+            class_idx = np.argmax(probs)
+            primary_label = CLASS_NAMES.get(class_idx, "Unknown")
+            primary_conf = probs[class_idx] * 100
+            
+            # --- THE SAFETY NET LOGIC ---
+            # Indices: 4=Melanoma, 1=BCC, 0=Actinic Keratosis
+            # If ANY cancer class is above 20%, override the "Safe" verdict
+            cancer_risk_score = probs[4] + probs[1]
+            is_high_risk = False
+            
+            if probs[4] > 0.15: # If Melanoma > 15%
+                is_high_risk = True
+                warning_msg = "⚠️ High-Risk Melanoma features detected."
+                display_label = "Possible Melanoma"
+            elif probs[1] > 0.20: # If BCC > 20%
+                is_high_risk = True
+                warning_msg = "⚠️ Basal Cell Carcinoma features detected."
+                display_label = "Possible Carcinoma"
+            elif primary_label in ['Melanoma (mel)', 'Basal Cell Carcinoma (bcc)']:
+                is_high_risk = True
+                warning_msg = f"⚠️ Diagnosis: {primary_label}"
+                display_label = primary_label
+            else:
+                display_label = primary_label
+
+            # --- DISPLAY RESULTS ---
+            with col2:
+                st.markdown("### 🔍 Analysis Report")
                 
-                # Get the highest probability class
-                class_idx = np.argmax(predictions[0])
-                confidence = np.max(predictions[0]) * 100
-                result_label = CLASS_NAMES.get(class_idx, "Unknown")
+                if is_high_risk:
+                    st.error(f"**ALERT:** {display_label}")
+                    st.warning(f"{warning_msg} Please consult a dermatologist.")
+                else:
+                    st.success(f"**PREDICTION:** {display_label}")
+                    st.info("✅ Lesion appears benign. Monitor for changes.")
                 
-                # Success Logic
-                with col2:
-                    st.markdown("### 🔍 Analysis Report")
-                    
-                    # High Risk Categories
-                    high_risk = ['Melanoma (mel)', 'Basal Cell Carcinoma (bcc)', 'Actinic Keratoses (akiec)']
-                    
-                    if any(risk in result_label for risk in high_risk):
-                        st.error(f"**PREDICTION:** {result_label}")
-                        st.warning("⚠️ High-Risk markers detected. Please consult a dermatologist immediately.")
-                    else:
-                        st.success(f"**PREDICTION:** {result_label}")
-                        st.info("✅ Lesion appears benign. Monitor for changes.")
-                        
-                    st.metric("AI Confidence Score", f"{confidence:.1f}%")
-                    
-                    # Expandable details
-                    with st.expander("See Raw Probabilities"):
-                        st.bar_chart(predictions[0])
-                        
-            except Exception as e:
-                st.error(f"Error during prediction: {e}")
+                # Show the score of the WINNER
+                st.metric("Model Confidence (Primary Class)", f"{primary_conf:.1f}%")
+                
+                with st.expander("See Risk Profile"):
+                    # Show bar chart of probabilities
+                    st.bar_chart(dict(zip(CLASS_NAMES.values(), probs)))
+                    if is_high_risk:
+                        st.caption("Note: High-Sensitivity Mode triggered an alert based on sub-threshold probabilities.")
