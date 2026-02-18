@@ -5,7 +5,7 @@ import cv2
 from PIL import Image
 import os
 
-# --- 1. CONFIGURATION (MATCHING V2 MODEL) ---
+# --- 1. CONFIGURATION (8 CLASSES - MATCHING YOUR V2 MODEL) ---
 CLASS_NAMES = {
     0: 'Actinic Keratoses (akiec)',
     1: 'Basal Cell Carcinoma (bcc)',
@@ -17,52 +17,41 @@ CLASS_NAMES = {
     7: 'Vascular Lesions (vasc)'
 }
 
-# --- 2. ADVANCED QUALITY GATES (The "Smart Filter") ---
-
+# --- 2. QUALITY GATES (Blur & Skin Filter) ---
 def check_image_quality(image):
     """
-    GATE 0: Checks if image is blurry.
-    GATE 1: Checks if image contains skin.
-    Returns: (Pass/Fail, Message)
+    GATE 0: Blur Check (Laplacian Var < 80)
+    GATE 1: Skin Check (YCbCr > 15%)
     """
-    # Convert to OpenCV format
     img_array = np.array(image.convert('RGB'))
     
-    # --- GATE 0: BLUR DETECTION (Laplacian Variance) ---
+    # A. BLUR CHECK
     gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
     blur_score = cv2.Laplacian(gray, cv2.CV_64F).var()
-    
-    if blur_score < 80: # Threshold for "Too Blurry"
-        return False, f"Image is too blurry (Score: {blur_score:.1f}). Please retake with better focus."
+    if blur_score < 80: 
+        return False, f"Image is too blurry (Score: {blur_score:.1f}). Please retake."
 
-    # --- GATE 1: SKIN DETECTION (YCbCr Method) ---
-    # We use YCbCr because it works well on ALL skin tones (dark/light)
+    # B. SKIN CHECK (YCbCr)
     img_ycbcr = cv2.cvtColor(img_array, cv2.COLOR_RGB2YCrCb)
-    
-    # Skin Color Bounds (Medical Standard)
     lower_skin = np.array([0, 133, 77], dtype=np.uint8)
     upper_skin = np.array([255, 173, 127], dtype=np.uint8)
-    
-    # Masking
     skin_mask = cv2.inRange(img_ycbcr, lower_skin, upper_skin)
-    skin_pixels = cv2.countNonZero(skin_mask)
-    total_pixels = img_array.shape[0] * img_array.shape[1]
-    skin_pct = (skin_pixels / total_pixels) * 100
+    skin_pct = (cv2.countNonZero(skin_mask) / (img_array.shape[0] * img_array.shape[1])) * 100
 
-    if skin_pct < 15: # Less than 15% skin? Reject it.
-        return False, f"No skin detected (Only {skin_pct:.1f}% skin tones found). Please upload a close-up of the lesion."
+    if skin_pct < 15: 
+        return False, f"No skin detected ({skin_pct:.1f}%). Upload a clear skin photo."
 
-    return True, "Quality Check Passed."
+    return True, "Passed"
 
 # --- 3. MODEL LOADER ---
 @st.cache_resource
 def load_learner():
     tf.keras.backend.clear_session()
-    model_path = "skin_cancer_model_v2_perfect.h5"
+    # ENSURE THIS MATCHES YOUR FILENAME
+    model_path = "skin_cancer_model_v2_perfect.h5" 
     
     if not os.path.exists(model_path):
-        st.error(f"❌ ERROR: Model file '{model_path}' not found.")
-        st.warning("👉 Move 'skin_cancer_model_v2_perfect.h5' to this folder.")
+        st.error(f"❌ File '{model_path}' not found.")
         return None
 
     try:
@@ -70,19 +59,17 @@ def load_learner():
         model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
         return model
     except Exception as e:
-        st.error(f"❌ Error loading model: {e}")
+        st.error(f"❌ Error: {e}")
         return None
 
 model = load_learner()
 
-# --- 4. UI DESIGN ---
-st.set_page_config(page_title="DermaAI Pro", page_icon="🔬")
+# --- 4. UI HEADER ---
+st.set_page_config(page_title="DermaAI", page_icon="🔬")
 st.markdown("<h1 style='text-align: center; color: #d33;'>🔬 DermaAI: Intelligent Diagnostics</h1>", unsafe_allow_html=True)
-st.markdown("### 🛡️ Medical-Grade Skin Lesion Analysis")
-st.caption("Powered by EfficientNetB0 • YCbCr Skin Detection • Noise Filtering")
 
-# --- 5. MAIN APPLICATION ---
-uploaded_file = st.file_uploader("Upload Dermoscopic Scan", type=["jpg", "png", "jpeg"])
+# --- 5. MAIN APP ---
+uploaded_file = st.file_uploader("Upload Scan", type=["jpg", "png", "jpeg"])
 
 if uploaded_file is not None:
     image = Image.open(uploaded_file)
@@ -91,70 +78,70 @@ if uploaded_file is not None:
     with col1:
         st.image(image, caption='Patient Scan', width=300)
     
-    # --- RUN QUALITY GATES FIRST ---
+    # RUN GATES
     is_valid, msg = check_image_quality(image)
     
     if not is_valid:
         with col2:
             st.error("🚫 IMAGE REJECTED")
             st.warning(msg)
-            st.info("The AI model was NOT run to prevent false diagnosis.")
     
-    # --- IF QUALITY IS GOOD, RUN AI ---
     elif model is not None:
-        with st.spinner('Analyzing tissue structure...'):
-            # Preprocess
+        with st.spinner('Analyzing...'):
+            # PREPROCESS
             img_array = np.array(image.convert('RGB'))
             img_array = cv2.resize(img_array, (224, 224))
             img_array = img_array.astype('float32')
             img_input = np.expand_dims(img_array, axis=0)
 
-            # Predict
+            # PREDICT
             preds = model.predict(img_input)
             probs = preds[0]
-            
-            # Get Results
             class_idx = np.argmax(probs)
             confidence = probs[class_idx] * 100
             label = CLASS_NAMES.get(class_idx, "Unknown")
             
-            # --- LOGIC ENGINE ---
-            status_color = "green"
-            display_msg = "Benign."
-            
-            # 1. Healthy Skin Check
-            if class_idx == 4:
-                status_color = "green"
-                label = "Healthy Skin"
-                display_msg = "No pathological features detected."
-            
-            # 2. Cancer Flags
-            elif class_idx == 6: # Melanoma
-                status_color = "red"
-                display_msg = "⚠️ High-Risk Malignancy Detected."
-            elif class_idx == 1: # BCC
-                status_color = "red"
-                display_msg = "⚠️ Basal Cell Carcinoma Detected."
-                
-            # 3. Low Confidence Fallback
-            if confidence < 40:
-                status_color = "gray"
-                label = "Inconclusive"
-                display_msg = "Low confidence. Please consult a dermatologist."
+            # --- SAFETY LOGIC ENGINE ---
+            status = "gray"
+            display_msg = "Inconclusive."
 
-            # --- DISPLAY REPORT ---
+            # 1. HEALTHY SKIN (Green)
+            if class_idx == 4:
+                status = "green"
+                label = "Healthy Skin"
+                display_msg = "No abnormalities detected."
+
+            # 2. HIGH CONFIDENCE CANCER (Red) -> >65% Sure
+            elif class_idx in [0, 1, 6] and confidence > 65:
+                status = "red"
+                if class_idx == 6: label = "High-Risk Melanoma"
+                elif class_idx == 1: label = "Basal Cell Carcinoma"
+                else: label = "Actinic Keratosis"
+                display_msg = "⚠️ Malignant features detected. Immediate consultation recommended."
+
+            # 3. HIGH CONFIDENCE BENIGN (Green) -> >50% Sure
+            elif class_idx in [2, 3, 5, 7] and confidence > 50:
+                status = "green"
+                display_msg = "Benign Lesion. Monitor for changes."
+
+            # 4. THE GRAY ZONE (Infections/Rashes) -> Low Confidence
+            else:
+                status = "gray"
+                label = "Inconclusive / Suspicious"
+                display_msg = "Analysis uncertain. This could be an infection, rash, or early lesion. Please consult a doctor."
+
+            # DISPLAY
             with col2:
-                if status_color == "red":
+                if status == "red":
                     st.error(f"**DIAGNOSIS:** {label}")
                     st.error(display_msg)
-                elif status_color == "gray":
-                    st.warning(f"**RESULT:** {label}")
-                    st.info(display_msg)
-                else:
+                elif status == "green":
                     st.success(f"**RESULT:** {label}")
                     st.success(f"✅ {display_msg}")
+                else:
+                    st.warning(f"**RESULT:** {label}")
+                    st.info(display_msg)
+                    st.caption("ℹ️ Note: Low confidence. AI excludes fungal/rash conditions.")
                 
                 st.metric("AI Confidence", f"{confidence:.1f}%")
-                
-                with st.expander("Show Probability Distribution"):
-                    st.bar_chart(dict(zip(CLASS_NAMES.values(), probs)))
+                st.bar_chart(dict(zip(CLASS_NAMES.values(), probs)))
