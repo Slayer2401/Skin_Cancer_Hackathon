@@ -5,87 +5,50 @@ import cv2
 from PIL import Image
 import os
 
-# --- CONFIGURATION ---
+# --- 1. CONFIGURATION (Matches your V2 Model) ---
 CLASS_NAMES = {
     0: 'Actinic Keratoses (akiec)',
-    1: 'Basal Cell Carcinoma (bcc)', 
+    1: 'Basal Cell Carcinoma (bcc)',
     2: 'Benign Keratosis (bkl)',
     3: 'Dermatofibroma (df)',
-    4: 'Melanoma (mel)',
+    4: 'Healthy Skin',           # The new class you added!
     5: 'Melanocytic Nevi (nv)',
-    6: 'Vascular Lesions (vasc)'
+    6: 'Melanoma (mel)',
+    7: 'Vascular Lesions (vasc)'
 }
 
-# --- 1. ROBUST MODEL LOADER ---
+# --- 2. LOAD THE MODEL ---
 @st.cache_resource
-def load_learner():
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    model_path = os.path.join(current_dir, 'skin_cancer_model.h5')
+def load_model():
+    # Clear session to avoid conflicts
+    tf.keras.backend.clear_session()
+    
+    # Path to the model file
+    model_path = "skin_cancer_model_v2_perfect.h5"
     
     if not os.path.exists(model_path):
-        st.error(f"❌ ERROR: File not found at: `{model_path}`")
+        st.error(f"❌ ERROR: File '{model_path}' not found.")
+        st.warning("👉 Please download 'skin_cancer_model_v2_perfect.h5' from Google Drive and put it in this folder.")
         return None
 
     try:
-        st.info("🔧 Building model architecture...")
-        
-        # 1. Re-create Base Model
-        base_model = tf.keras.applications.EfficientNetB0(
-            include_top=False,
-            weights=None, 
-            input_shape=(224, 224, 3)
-        )
-        base_model.trainable = False 
-
-        # 2. Re-create Head
-        model = tf.keras.models.Sequential([
-            base_model,
-            tf.keras.layers.GlobalAveragePooling2D(),
-            tf.keras.layers.Dropout(0.3),
-            tf.keras.layers.Dense(128, activation='relu'),
-            tf.keras.layers.Dense(7, activation='softmax')
-        ])
-        
-        # 3. Compile & Load Weights
+        # Load the model (Custom Head + EfficientNet)
+        # We use 'compile=False' to avoid safety warnings, then compile manually
+        model = tf.keras.models.load_model(model_path, compile=False)
         model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-        model.load_weights(model_path)
-        
-        st.success("✅ Model System Online")
         return model
-
     except Exception as e:
         st.error(f"❌ Error loading model: {e}")
         return None
 
-model = load_learner()
-
-# --- 2. PREPROCESSING ---
-def preprocess_image(image):
-    img_array = np.array(image.convert('RGB'))
-    img_array = img_array.astype('uint8')
-    
-    # Hair Removal
-    gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
-    kernel = cv2.getStructuringElement(1, (17, 17))
-    blackhat = cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, kernel)
-    _, threshold = cv2.threshold(blackhat, 10, 255, cv2.THRESH_BINARY)
-    final_image = cv2.inpaint(img_array, threshold, 1, cv2.INPAINT_TELEA)
-    
-    # Resize & Convert
-    final_image = cv2.resize(final_image, (224, 224))
-    final_image = final_image.astype('float32')
-    
-    return np.expand_dims(final_image, axis=0)
+model = load_model()
 
 # --- 3. UI DESIGN ---
 st.set_page_config(page_title="DermaAI Scanner", page_icon="🔬")
+st.markdown("<h1 style='text-align: center; color: #d33;'>🔬 DermaAI: Skin Lesion Analysis</h1>", unsafe_allow_html=True)
+st.markdown("### Upload a dermoscopic image for AI risk assessment.")
 
-st.markdown("<h1 style='text-align: center; color: #d33;'>🔬 DermaAI: Skin Lesion Classifier</h1>", unsafe_allow_html=True)
-
-st.sidebar.title("About Project")
-st.sidebar.info("Features **EfficientNetB0** + **Digital Hair Removal**.")
-st.sidebar.info("🛡️ **High-Sensitivity Mode Active:** This model prioritizes patient safety. Any suspicious features will trigger a medical alert, even if the primary prediction is benign.")
-
+# --- 4. PREDICTION ENGINE ---
 uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "png", "jpeg"])
 
 if uploaded_file is not None:
@@ -93,57 +56,64 @@ if uploaded_file is not None:
     col1, col2 = st.columns(2)
     
     with col1:
-        # FIXED: Removed yellow warning box
-        st.image(image, caption='Original Upload', width=350)
+        st.image(image, caption='Uploaded Scan', width=300)
     
     if model is not None:
-        with st.spinner('Scanning for patterns...'):
-            processed_img = preprocess_image(image)
-            predictions = model.predict(processed_img)
-            probs = predictions[0] # Get probabilities
-            
-            # Get the "Winner"
-            class_idx = np.argmax(probs)
-            primary_label = CLASS_NAMES.get(class_idx, "Unknown")
-            primary_conf = probs[class_idx] * 100
-            
-            # --- THE SAFETY NET LOGIC ---
-            # Indices: 4=Melanoma, 1=BCC, 0=Actinic Keratosis
-            # If ANY cancer class is above 20%, override the "Safe" verdict
-            cancer_risk_score = probs[4] + probs[1]
-            is_high_risk = False
-            
-            if probs[4] > 0.15: # If Melanoma > 15%
-                is_high_risk = True
-                warning_msg = "⚠️ High-Risk Melanoma features detected."
-                display_label = "Possible Melanoma"
-            elif probs[1] > 0.20: # If BCC > 20%
-                is_high_risk = True
-                warning_msg = "⚠️ Basal Cell Carcinoma features detected."
-                display_label = "Possible Carcinoma"
-            elif primary_label in ['Melanoma (mel)', 'Basal Cell Carcinoma (bcc)']:
-                is_high_risk = True
-                warning_msg = f"⚠️ Diagnosis: {primary_label}"
-                display_label = primary_label
-            else:
-                display_label = primary_label
+        with st.spinner('Analyzing tissue structure...'):
+            # Preprocess
+            img_array = np.array(image.convert('RGB'))
+            img_array = cv2.resize(img_array, (224, 224))
+            img_array = img_array.astype('float32')
+            # EfficientNet expects 0-255, so we don't divide by 255 here if using standard preprocessing
+            # But your training script used standard loading, so let's keep it simple:
+            img_input = np.expand_dims(img_array, axis=0)
 
-            # --- DISPLAY RESULTS ---
+            # Predict
+            preds = model.predict(img_input)
+            probs = preds[0]
+            
+            # Get Top Prediction
+            class_idx = np.argmax(probs)
+            confidence = probs[class_idx] * 100
+            label = CLASS_NAMES.get(class_idx, "Unknown")
+            
+            # --- RESULTS LOGIC ---
+            status_color = "green"
+            msg = "Benign."
+            
+            # 1. Healthy Skin
+            if class_idx == 4:
+                status_color = "green"
+                label = "Healthy Skin"
+                msg = "No abnormalities detected."
+            
+            # 2. Cancer Flags (Melanoma & BCC)
+            elif class_idx == 6: # Melanoma
+                status_color = "red"
+                msg = "High-Risk Malignancy Detected."
+            elif class_idx == 1: # BCC
+                status_color = "red"
+                msg = "Basal Cell Carcinoma Detected."
+                
+            # 3. Low Confidence Fallback
+            if confidence < 35:
+                status_color = "gray"
+                label = "Inconclusive"
+                msg = "Image quality low or unclear features."
+
+            # --- DISPLAY REPORT ---
             with col2:
-                st.markdown("### 🔍 Analysis Report")
-                
-                if is_high_risk:
-                    st.error(f"**ALERT:** {display_label}")
-                    st.warning(f"{warning_msg} Please consult a dermatologist.")
+                if status_color == "red":
+                    st.error(f"**DIAGNOSIS:** {label}")
+                    st.error(f"⚠️ {msg}")
+                elif status_color == "gray":
+                    st.warning(f"**RESULT:** {label}")
+                    st.info(msg)
                 else:
-                    st.success(f"**PREDICTION:** {display_label}")
-                    st.info("✅ Lesion appears benign. Monitor for changes.")
+                    st.success(f"**RESULT:** {label}")
+                    st.success(f"✅ {msg}")
                 
-                # Show the score of the WINNER
-                st.metric("Model Confidence (Primary Class)", f"{primary_conf:.1f}%")
+                st.metric("Confidence Score", f"{confidence:.2f}%")
                 
-                with st.expander("See Risk Profile"):
-                    # Show bar chart of probabilities
-                    st.bar_chart(dict(zip(CLASS_NAMES.values(), probs)))
-                    if is_high_risk:
-                        st.caption("Note: High-Sensitivity Mode triggered an alert based on sub-threshold probabilities.")
+                # Show Chart
+                st.bar_chart(dict(zip(CLASS_NAMES.values(), probs)))
