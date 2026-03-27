@@ -116,36 +116,94 @@ def predict_with_tta(model, img_array):
 # 7. GRAD-CAM
 # ═══════════════════════════════════════════════════════════
 def generate_gradcam(model, img_array_224, class_idx):
-    last_conv_layer = None
-    for layer in reversed(model.layers):
-        if isinstance(layer, tf.keras.layers.Conv2D):
-            last_conv_layer = layer.name
-            break
-    if last_conv_layer is None:
+    try:
+        last_conv_layer = None
+        for layer in reversed(model.layers):
+            try:
+                if layer.name == 'efficientnetb0' or (hasattr(layer, 'output') and len(layer.output.shape) == 4 and 'random' not in layer.name):
+                    last_conv_layer = layer.name
+                    break
+            except Exception:
+                continue
+        if last_conv_layer is None:
+            return None
+        grad_model = tf.keras.models.Model(
+            inputs  = model.inputs,
+            outputs = [model.get_layer(last_conv_layer).output, model.output]
+        )
+        img_input = np.expand_dims(img_array_224.astype('float32'), axis=0)
+        img_input = tf.keras.applications.efficientnet.preprocess_input(img_input)
+        with tf.GradientTape() as tape:
+            conv_outputs, predictions = grad_model(img_input, training=False)
+            loss = predictions[:, class_idx]
+        grads        = tape.gradient(loss, conv_outputs)
+        pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
+        conv_outputs = conv_outputs[0]
+        heatmap      = conv_outputs @ pooled_grads[..., tf.newaxis]
+        heatmap      = tf.squeeze(heatmap).numpy()
+        heatmap = np.maximum(heatmap, 0)
+        if heatmap.max() > 0:
+            heatmap /= heatmap.max()
+        heatmap_resized = cv2.resize(heatmap, (224, 224))
+        heatmap_uint8   = np.uint8(255 * heatmap_resized)
+        heatmap_colored = cv2.applyColorMap(heatmap_uint8, cv2.COLORMAP_JET)
+        heatmap_colored = cv2.cvtColor(heatmap_colored, cv2.COLOR_BGR2RGB)
+        overlay = cv2.addWeighted(img_array_224.astype(np.uint8), 0.6, heatmap_colored, 0.4, 0)
+        return Image.fromarray(overlay), heatmap
+    except Exception as e:
+        print(f"Grad-CAM generation failed: {e}")
         return None
-    grad_model = tf.keras.models.Model(
-        inputs  = model.inputs,
-        outputs = [model.get_layer(last_conv_layer).output, model.output]
-    )
-    img_input = np.expand_dims(img_array_224.astype('float32'), axis=0)
-    img_input = tf.keras.applications.efficientnet.preprocess_input(img_input)
-    with tf.GradientTape() as tape:
-        conv_outputs, predictions = grad_model(img_input)
-        loss = predictions[:, class_idx]
-    grads        = tape.gradient(loss, conv_outputs)
-    pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
-    conv_outputs = conv_outputs[0]
-    heatmap      = conv_outputs @ pooled_grads[..., tf.newaxis]
-    heatmap      = tf.squeeze(heatmap).numpy()
-    heatmap = np.maximum(heatmap, 0)
-    if heatmap.max() > 0:
-        heatmap /= heatmap.max()
-    heatmap_resized = cv2.resize(heatmap, (224, 224))
-    heatmap_uint8   = np.uint8(255 * heatmap_resized)
-    heatmap_colored = cv2.applyColorMap(heatmap_uint8, cv2.COLORMAP_JET)
-    heatmap_colored = cv2.cvtColor(heatmap_colored, cv2.COLOR_BGR2RGB)
-    overlay = cv2.addWeighted(img_array_224.astype(np.uint8), 0.6, heatmap_colored, 0.4, 0)
-    return Image.fromarray(overlay)
+
+# ═══════════════════════════════════════════════════════════
+# 7b. LESION HIGHLIGHT (contour overlay on original image)
+# ═══════════════════════════════════════════════════════════
+def generate_lesion_highlight(original_img, heatmap, threshold=0.45):
+    """
+    Uses the Grad-CAM heatmap to find high-attention regions,
+    then draws contour outlines on the original full-size image
+    to highlight the affected/infected area.
+    Returns a PIL Image with contour overlay.
+    """
+    img_array = np.array(original_img.convert('RGB')).copy()
+    h, w = img_array.shape[:2]
+
+    # Resize heatmap to original image dimensions
+    heatmap_full = cv2.resize(heatmap, (w, h))
+
+    # Threshold to get the region of interest
+    mask = (heatmap_full >= threshold).astype(np.uint8) * 255
+
+    # Clean up the mask with morphological operations
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+
+    # Find contours
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    if contours:
+        # Draw semi-transparent fill on the affected region
+        overlay = img_array.copy()
+        cv2.drawContours(overlay, contours, -1, (13, 148, 136), thickness=cv2.FILLED)  # Teal fill
+        img_array = cv2.addWeighted(img_array, 0.75, overlay, 0.25, 0)  # 25% opacity fill
+
+        # Draw contour outlines (thicker, bright teal)
+        cv2.drawContours(img_array, contours, -1, (13, 148, 136), thickness=3)
+
+        # Draw bounding box around the largest contour
+        largest = max(contours, key=cv2.contourArea)
+        x, y, bw, bh = cv2.boundingRect(largest)
+        cv2.rectangle(img_array, (x - 5, y - 5), (x + bw + 5, y + bh + 5), (239, 68, 68), 2)
+
+        # Add label
+        label_text = "AFFECTED AREA"
+        font_scale = max(0.5, min(w, h) / 600)
+        thickness = max(1, int(font_scale * 2))
+        (tw, th), _ = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
+        cv2.rectangle(img_array, (x - 5, y - th - 15), (x + tw + 5, y - 5), (239, 68, 68), cv2.FILLED)
+        cv2.putText(img_array, label_text, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), thickness)
+
+    return Image.fromarray(img_array)
 
 # ═══════════════════════════════════════════════════════════
 # 8. PDF REPORT GENERATOR
@@ -386,7 +444,7 @@ if st.session_state.page == "home":
     st.markdown("""
     <div class="footer">
         <p class="footer-brand">🩺 DermaAI Diagnostics</p>
-        <p>APEX AI Hackathon 2026 · Built with EfficientNetB0, Streamlit & TensorFlow</p>
+        <p>Built with EfficientNetB0, Streamlit & TensorFlow</p>
         <p style="margin-top: 12px; font-size: 0.75rem; color: #64748B;">
             ⚠️ This tool is for screening purposes only and does not replace professional medical diagnosis.<br>
             Always consult a qualified dermatologist for clinical decisions.
@@ -502,19 +560,26 @@ elif st.session_state.page == "scan":
                 m2.metric("Scan Quality", "Pass", "High")
                 m3.metric("Model Version", "V2.1 + TTA")
 
-                # ── GRAD-CAM ───────────────────────────────────────
-                st.markdown("#### 🔥 Grad-CAM — Model Attention Map")
-                with st.spinner("Generating Grad-CAM heatmap..."):
+                # ── GRAD-CAM + LESION HIGHLIGHT ───────────────────
+                st.markdown("#### 🔥 Lesion Detection & Model Attention")
+                with st.spinner("Generating heatmap & detecting affected region..."):
                     img_224     = cv2.resize(img_array_raw, (224, 224))
-                    gradcam_img = generate_gradcam(model, img_224, class_idx)
+                    gradcam_result = generate_gradcam(model, img_224, class_idx)
 
-                if gradcam_img:
-                    gc1, gc2 = st.columns(2)
+                if gradcam_result is not None:
+                    gradcam_img, raw_heatmap = gradcam_result
+
+                    # Generate lesion highlight on the original-size image
+                    highlight_img = generate_lesion_highlight(clean_image, raw_heatmap)
+
+                    gc1, gc2, gc3 = st.columns(3)
                     with gc1:
-                        st.image(clean_image, caption="Processed scan", use_container_width=True)
+                        st.image(clean_image, caption="Processed Scan", use_container_width=True)
                     with gc2:
-                        st.image(gradcam_img, caption="AI attention (red = high focus)", use_container_width=True)
-                    st.caption("Grad-CAM highlights the regions that most influenced the AI's decision.")
+                        st.image(gradcam_img, caption="Grad-CAM Heatmap", use_container_width=True)
+                    with gc3:
+                        st.image(highlight_img, caption="🎯 Affected Area Highlighted", use_container_width=True)
+                    st.caption("Left: cleaned scan · Centre: AI attention (red = high focus) · Right: detected affected region with contour overlay")
                 else:
                     st.info("Grad-CAM not available for this model architecture.")
 
@@ -638,8 +703,7 @@ elif st.session_state.page == "about":
         <div class="about-card">
             <h3>⚖️ Disclaimer</h3>
             <p>
-                DermaAI is an <b>AI-assisted screening tool</b> developed for the
-                APEX AI Hackathon 2026. It is <b>not a substitute</b> for
+                DermaAI is an <b>AI-assisted screening tool</b>. It is <b>not a substitute</b> for
                 professional medical diagnosis.
             </p>
             <p>
@@ -652,7 +716,7 @@ elif st.session_state.page == "about":
 
     st.markdown("""
     <div class="about-card" style="text-align:center;">
-        <h3>🏥 Built for APEX AI Hackathon 2026</h3>
+        <h3>🏥 Built for Clinical Decision Support</h3>
         <p>EfficientNetB0 · Keras 3 · Streamlit · Grad-CAM · TTA · OpenCV</p>
     </div>
     """, unsafe_allow_html=True)

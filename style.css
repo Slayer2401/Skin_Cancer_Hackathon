@@ -6,8 +6,18 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
 
 /* ── Global Reset ──────────────────────────────────────────── */
-html, body, [class*="st-"] {
+/* Removed aggressive st- font override to protect Material Icons */
+
+/* ── Typography Definitions ── */
+.hero-section, .hero-sub, .section-sub, .feature-card, .step-item p, 
+.about-card p, .footer, .stat-label, .result-card-green p, 
+.result-card-red p, .result-card-gray p {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+}
+
+h1, h2, h3, h4, h5, h6, .hero-badge, .stat-value, .result-card-green h2, 
+.result-card-red h2, .result-card-gray h2, .scan-header h2, .section-heading {
+    font-family: 'Outfit', sans-serif !important;
 }
 
 /* ── Sidebar ───────────────────────────────────────────────── */
@@ -15,7 +25,7 @@ section[data-testid="stSidebar"] {
     background: linear-gradient(180deg, #0F172A 0%, #1E293B 100%) !important;
     border-right: 1px solid rgba(255,255,255,0.06);
 }
-section[data-testid="stSidebar"] * {
+section[data-testid="stSidebar"] *:not(.material-symbols-rounded):not(.material-symbols-outlined):not([class*="material"]) {
     color: #CBD5E1 !important;
 }
 section[data-testid="stSidebar"] h1,
