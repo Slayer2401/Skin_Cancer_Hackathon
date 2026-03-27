@@ -1,98 +1,357 @@
-/* style.css - DermaAI Pro (High Contrast Fix) */
+/* ═══════════════════════════════════════════════════════════
+   DermaAI Pro — Premium Medical Interface
+   Colour palette: Teal / Navy / Slate / White
+   ═══════════════════════════════════════════════════════════ */
 
-/* IMPORT GOOGLE FONTS */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
 
-/* GLOBAL STYLES - FORCE LIGHT THEME TEXT */
-html, body, [class*="css"], .stMarkdown, .stText {
-    font-family: 'Inter', sans-serif;
-    color: #1E293B !important; /* Force Dark Grey Text Globally */
+/* ── Global Reset ──────────────────────────────────────────── */
+html, body, [class*="st-"] {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
 }
 
-/* BACKGROUND */
-.stApp {
-    background-color: #F8FAFC; 
-}
-
-/* SIDEBAR */
+/* ── Sidebar ───────────────────────────────────────────────── */
 section[data-testid="stSidebar"] {
-    background-color: #FFFFFF;
-    border-right: 1px solid #E2E8F0;
+    background: linear-gradient(180deg, #0F172A 0%, #1E293B 100%) !important;
+    border-right: 1px solid rgba(255,255,255,0.06);
+}
+section[data-testid="stSidebar"] * {
+    color: #CBD5E1 !important;
+}
+section[data-testid="stSidebar"] h1,
+section[data-testid="stSidebar"] h2,
+section[data-testid="stSidebar"] h3 {
+    color: #F1F5F9 !important;
+    font-family: 'Outfit', sans-serif !important;
+}
+section[data-testid="stSidebar"] hr {
+    border-color: rgba(255,255,255,0.08) !important;
+}
+section[data-testid="stSidebar"] .stTextInput input {
+    background: rgba(255,255,255,0.06) !important;
+    border: 1px solid rgba(255,255,255,0.12) !important;
+    color: #F1F5F9 !important;
+    border-radius: 8px !important;
 }
 
-/* HEADERS */
-h1, h2, h3, h4, h5, h6 {
-    color: #0F172A !important; /* Force Dark Navy Headers */
-    font-weight: 700;
+/* ── Hero Section ──────────────────────────────────────────── */
+.hero-section {
+    background: linear-gradient(135deg, #0F172A 0%, #0D3B66 40%, #0D9488 100%);
+    border-radius: 20px;
+    padding: 60px 48px;
+    margin-bottom: 36px;
+    position: relative;
+    overflow: hidden;
+    animation: heroFadeIn 0.8s ease-out;
 }
-
-/* --- FILE UPLOADER FIX (THE IMPORTANT PART) --- */
-[data-testid='stFileUploader'] {
-    background-color: #EFF6FF !important; /* Force Light Blue Background */
-    border: 2px dashed #3B82F6;
-    border-radius: 12px;
-    padding: 20px;
+.hero-section::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -20%;
+    width: 500px;
+    height: 500px;
+    background: radial-gradient(circle, rgba(13,148,136,0.25) 0%, transparent 70%);
+    border-radius: 50%;
 }
-
-/* Force the "Drag and drop" text to be DARK */
-[data-testid='stFileUploader'] section > div {
-    color: #1E293B !important;
+.hero-section h1 {
+    font-family: 'Outfit', sans-serif !important;
+    font-size: 2.8rem !important;
+    font-weight: 800 !important;
+    color: #FFFFFF !important;
+    margin-bottom: 12px !important;
+    letter-spacing: -0.5px;
+    position: relative;
 }
-
-/* Force the small "Limit 200MB" text to be DARK */
-[data-testid='stFileUploader'] section span {
-    color: #475569 !important;
+.hero-section .hero-sub {
+    font-size: 1.15rem;
+    color: rgba(255,255,255,0.75);
+    line-height: 1.7;
+    max-width: 600px;
+    margin-bottom: 28px;
 }
-
-/* Force the "Browse files" button to look correct */
-[data-testid='stFileUploader'] button {
-    background-color: #FFFFFF !important;
-    color: #3B82F6 !important;
-    border: 1px solid #3B82F6 !important;
-}
-
-/* METRIC CARDS */
-div[data-testid="stMetric"] {
-    background-color: #FFFFFF;
-    border: 1px solid #E2E8F0;
-    border-radius: 10px;
-    padding: 15px;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-div[data-testid="stMetric"] label {
-    color: #64748B !important;
-}
-div[data-testid="stMetric"] div {
-    color: #0F172A !important;
-}
-
-/* --- RESULT CARDS --- */
-.result-card-green {
-    background-color: #DCFCE7;
-    border-left: 5px solid #22C55E;
-    padding: 20px;
-    border-radius: 8px;
+.hero-section .hero-badge {
+    display: inline-block;
+    background: rgba(255,255,255,0.12);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 999px;
+    padding: 6px 18px;
+    font-size: 0.8rem;
+    color: #5EEAD4;
+    font-weight: 600;
+    letter-spacing: 0.5px;
     margin-bottom: 20px;
-    color: #14532D !important;
 }
-.result-card-green h2 { color: #14532D !important; }
+
+/* ── Feature Cards ─────────────────────────────────────────── */
+.feature-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin-bottom: 36px;
+}
+.feature-card {
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 16px;
+    padding: 28px 24px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+.feature-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px rgba(15,23,42,0.08);
+    border-color: #0D9488;
+}
+.feature-card .card-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    margin-bottom: 16px;
+}
+.feature-card .card-icon.teal    { background: #CCFBF1; }
+.feature-card .card-icon.blue    { background: #DBEAFE; }
+.feature-card .card-icon.purple  { background: #EDE9FE; }
+.feature-card h3 {
+    font-family: 'Outfit', sans-serif !important;
+    font-size: 1.1rem !important;
+    font-weight: 700 !important;
+    color: #0F172A !important;
+    margin-bottom: 8px !important;
+}
+.feature-card p {
+    font-size: 0.9rem;
+    color: #64748B;
+    line-height: 1.6;
+    margin: 0;
+}
+
+/* ── Steps Section ─────────────────────────────────────────── */
+.steps-section {
+    background: #F8FAFC;
+    border-radius: 16px;
+    padding: 40px 32px;
+    margin-bottom: 36px;
+    border: 1px solid #E2E8F0;
+}
+.steps-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    margin-top: 24px;
+}
+.step-item {
+    text-align: center;
+    padding: 20px;
+}
+.step-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #0D9488, #14B8A6);
+    color: white;
+    font-family: 'Outfit', sans-serif;
+    font-weight: 700;
+    font-size: 1.1rem;
+    margin-bottom: 14px;
+}
+.step-item h4 {
+    font-family: 'Outfit', sans-serif !important;
+    font-size: 1rem !important;
+    font-weight: 700 !important;
+    color: #0F172A !important;
+    margin-bottom: 6px !important;
+}
+.step-item p {
+    font-size: 0.85rem;
+    color: #64748B;
+    line-height: 1.5;
+    margin: 0;
+}
+
+/* ── Section Heading ───────────────────────────────────────── */
+.section-heading {
+    font-family: 'Outfit', sans-serif !important;
+    font-size: 1.6rem !important;
+    font-weight: 700 !important;
+    color: #0F172A !important;
+    text-align: center;
+    margin-bottom: 8px !important;
+}
+.section-sub {
+    text-align: center;
+    color: #64748B;
+    font-size: 0.95rem;
+    margin-bottom: 28px;
+}
+
+/* ── Result Cards ──────────────────────────────────────────── */
+.result-card-green {
+    background: linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%);
+    border-left: 5px solid #10B981;
+    border-radius: 0 16px 16px 0;
+    padding: 24px 28px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 16px rgba(16,185,129,0.1);
+    animation: fadeSlideIn 0.5s ease-out;
+}
+.result-card-green h2, .result-card-green h3 {
+    font-family: 'Outfit', sans-serif !important;
+    color: #065F46 !important;
+    margin-bottom: 8px !important;
+}
+.result-card-green p { color: #065F46; }
 
 .result-card-red {
-    background-color: #FEE2E2;
+    background: linear-gradient(135deg, #FEF2F2 0%, #FEE2E2 100%);
     border-left: 5px solid #EF4444;
-    padding: 20px;
-    border-radius: 8px;
+    border-radius: 0 16px 16px 0;
+    padding: 24px 28px;
     margin-bottom: 20px;
-    color: #7F1D1D !important;
+    box-shadow: 0 4px 16px rgba(239,68,68,0.1);
+    animation: fadeSlideIn 0.5s ease-out;
 }
-.result-card-red h2 { color: #7F1D1D !important; }
+.result-card-red h2, .result-card-red h3 {
+    font-family: 'Outfit', sans-serif !important;
+    color: #991B1B !important;
+    margin-bottom: 8px !important;
+}
+.result-card-red p { color: #7F1D1D; }
 
 .result-card-gray {
-    background-color: #F1F5F9;
-    border-left: 5px solid #64748B;
-    padding: 20px;
-    border-radius: 8px;
+    background: linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%);
+    border-left: 5px solid #94A3B8;
+    border-radius: 0 16px 16px 0;
+    padding: 24px 28px;
     margin-bottom: 20px;
-    color: #1E293B !important;
+    box-shadow: 0 4px 16px rgba(100,116,139,0.08);
+    animation: fadeSlideIn 0.5s ease-out;
 }
-.result-card-gray h2 { color: #1E293B !important; }
+.result-card-gray h2, .result-card-gray h3 {
+    font-family: 'Outfit', sans-serif !important;
+    color: #334155 !important;
+    margin-bottom: 8px !important;
+}
+.result-card-gray p { color: #475569; }
+
+/* ── Scan Page Header ──────────────────────────────────────── */
+.scan-header {
+    background: linear-gradient(135deg, #0F172A 0%, #1E3A5F 100%);
+    border-radius: 16px;
+    padding: 28px 32px;
+    margin-bottom: 28px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+.scan-header h2 {
+    font-family: 'Outfit', sans-serif !important;
+    color: #FFFFFF !important;
+    font-size: 1.5rem !important;
+    font-weight: 700 !important;
+    margin: 0 !important;
+}
+.scan-header p {
+    color: rgba(255,255,255,0.65);
+    margin: 4px 0 0 0;
+    font-size: 0.9rem;
+}
+
+/* ── About Page ────────────────────────────────────────────── */
+.about-card {
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 16px;
+    padding: 28px;
+    margin-bottom: 16px;
+    transition: box-shadow 0.3s ease;
+}
+.about-card:hover {
+    box-shadow: 0 8px 30px rgba(15,23,42,0.06);
+}
+.about-card h3 {
+    font-family: 'Outfit', sans-serif !important;
+    color: #0F172A !important;
+    font-weight: 700 !important;
+    margin-bottom: 12px !important;
+}
+.about-card p {
+    color: #475569;
+    line-height: 1.7;
+    font-size: 0.92rem;
+}
+
+/* ── Footer ────────────────────────────────────────────────── */
+.footer {
+    background: #0F172A;
+    border-radius: 16px;
+    padding: 32px;
+    margin-top: 48px;
+    text-align: center;
+}
+.footer p {
+    color: #94A3B8;
+    font-size: 0.85rem;
+    line-height: 1.7;
+    margin: 0;
+}
+.footer .footer-brand {
+    font-family: 'Outfit', sans-serif;
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: #F1F5F9;
+    margin-bottom: 8px;
+}
+
+/* ── Stat Card ─────────────────────────────────────────────── */
+.stat-card {
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 14px;
+    padding: 20px;
+    text-align: center;
+    transition: all 0.3s ease;
+}
+.stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(15,23,42,0.06);
+}
+.stat-card .stat-value {
+    font-family: 'Outfit', sans-serif;
+    font-size: 1.8rem;
+    font-weight: 800;
+    color: #0D9488;
+}
+.stat-card .stat-label {
+    font-size: 0.8rem;
+    color: #64748B;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 4px;
+}
+
+/* ── Animations ────────────────────────────────────────────── */
+@keyframes heroFadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeSlideIn {
+    from { opacity: 0; transform: translateX(-12px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ── Responsive ────────────────────────────────────────────── */
+@media (max-width: 768px) {
+    .feature-grid, .steps-grid { grid-template-columns: 1fr; }
+    .hero-section { padding: 36px 24px; }
+    .hero-section h1 { font-size: 2rem !important; }
+}
