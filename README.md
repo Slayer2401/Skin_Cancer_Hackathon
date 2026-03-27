@@ -290,4 +290,4 @@ This architecture satisfies HIPAA's minimum necessary and data minimisation prin
 
 ---
 
-*Created by Team CodeNova for the APEX AI Hackathon 2026.*
+
